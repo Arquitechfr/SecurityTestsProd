@@ -253,22 +253,33 @@ function checkLocalFile(target) {
   const perms   = getPermissions(fullPath);
   const content = readPartial(fullPath);
   const secrets = detectSecrets(content);
-  const needsFix = perms ? (perms.worldRead || perms.worldWrite || perms.worldExec) : false;
+  let needsFix = false;
+  if (perms) {
+    const mode = parseInt(perms.octal, 8);
+    const targetMode = isSensitiveFile(target.path) ? 0o600 : 0o640;
+    needsFix = mode !== targetMode;
+  }
 
   return { path: target.path, severity: target.severity, desc: target.desc, perms, secrets, needsFix };
 }
 
-/** Correct file permissions: remove others' access while keeping owner/group intact */
-function correctFilePermissions(fullPath) {
+const SENSITIVE_PATHS_RE = /\.(env|env\.local|env\.production|env\.development|env\.staging|env\.test)(\.local)?$|secrets\.json|credentials\.json|serviceAccountKey\.json|firebase-adminsdk\.json|gcp-credentials\.json|id_rsa|id_ed25519|dump\.sql|backup\.sql|\.aws\/credentials/i;
+
+function isSensitiveFile(filePath) {
+  return SENSITIVE_PATHS_RE.test(filePath);
+}
+
+/** Correct file permissions: 600 for sensitive files, 640 for others */
+function correctFilePermissions(fullPath, filePath) {
   if (process.platform === 'win32') return { error: 'Windows non supporté pour la correction de permissions' };
   try {
     const stat = fs.statSync(fullPath);
     const currentMode = stat.mode & 0o777;
-    // Remove all permissions for others (o-rwx), keep owner & group intact
-    const newMode = currentMode & ~0o007;
-    if (newMode !== currentMode) {
-      fs.chmodSync(fullPath, newMode);
-      return { from: currentMode, to: newMode };
+    const sensitive = isSensitiveFile(filePath);
+    const targetMode = sensitive ? 0o600 : 0o640;
+    if (currentMode !== targetMode) {
+      fs.chmodSync(fullPath, targetMode);
+      return { from: currentMode, to: targetMode };
     }
     return null; // already OK
   } catch (e) {
@@ -368,7 +379,8 @@ function printLocalResult(found) {
     const permStr = `chmod ${found.perms.octal} · ${formatBytes(found.perms.size)}`;
     console.log(col(C.gray, `     Permissions : ${permStr}`));
     if (found.perms.worldRead) {
-      console.log(col(C.red, '     ⚠  World-readable ! (chmod 600 recommandé)'));
+      const recommended = isSensitiveFile(found.path) ? '600' : '640';
+      console.log(col(C.red, `     ⚠  World-readable ! (chmod ${recommended} recommandé)`));
     }
   }
 
@@ -636,7 +648,7 @@ async function main() {
       } else {
         for (const found of toFix) {
           const fullPath = path.join(cwd, found.path);
-          const result = correctFilePermissions(fullPath);
+          const result = correctFilePermissions(fullPath, found.path);
           if (result?.error) {
             console.log(col(C.red, `  ✗ ${found.path} — ${result.error}`));
           } else if (result) {
