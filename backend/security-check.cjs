@@ -372,7 +372,9 @@ function printSection(title) {
 function printLocalResult(found) {
   const p = found.path.padEnd(36);
   const s = col(sevColor(found.severity), `[${found.severity}]`);
-  console.log(`  ${col(C.red, '⚠')}  ${col(C.white, p)} ${s}`);
+  const hasRisk = (found.perms?.worldRead) || found.secrets.length > 0;
+  const icon = hasRisk ? col(C.red, '⚠') : col(C.gray, '•');
+  console.log(`  ${icon}  ${col(C.white, p)} ${s}`);
   console.log(col(C.gray, `     ${found.desc}`));
 
   if (found.perms) {
