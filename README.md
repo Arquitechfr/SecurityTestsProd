@@ -5,16 +5,21 @@ Outils d'audit de sécurité légers, sans dépendance, pour détecter les fichi
 ## Structure
 
 - `backend/security-check.js` — Audit backend (Node.js, terminal)
-- `web/index.html` + `web/security-audit.js` — Audit frontend (navigateur)
+- `web/index.html` — UI frontend
+- `web/security-audit.js` — Orchestrateur frontend (module ESM)
+- `web/audit-core.js` — Config, targets, patterns secrets, scan HTTP
+- `web/audit-ui.js` — DOM helpers (badges, tableaux, progress)
+- `web/audit-report.js` — Exports (texte, IA, JSON)
 
 ## Fonctionnalités
 
 - **Scan local** : détecte la présence de fichiers sensibles (`.env`, clés, dumps SQL, etc.)
 - **Scan distant** : teste l'accessibilité publique de ces fichiers via HTTP
-- **Détection de secrets** : repère les patterns connus (AWS, Stripe, JWT, Firebase, etc.)
+- **Détection de secrets** : repère les patterns connus (AWS, Stripe, JWT, Firebase, OpenAI, SendGrid, Mailgun, HuggingFace, GitLab, Heroku, Azure, etc.)
 - **Vérification des permissions** : signale les fichiers world-readable (Unix)
 - **Auto-correction** : corrige les permissions (`--correction`)
 - **Export IA** : génère un prompt pour analyse par LLM (`--ai-prompt`)
+- **Export JSON** : exporte le rapport en JSON (`--json` backend, bouton téléchargement frontend)
 
 ## Utilisation backend
 
@@ -30,6 +35,7 @@ node backend/security-check.js https://api.exemple.com
 Options :
 - `--correction` — corrige automatiquement les permissions
 - `--ai-prompt` — exporte un rapport pour LLM
+- `--json` — exporte le rapport au format JSON (`security-audit-report.json`)
 
 ## Utilisation frontend
 
@@ -58,12 +64,12 @@ Le frontend est protégé par un code PIN à 4 chiffres (hash SHA-256 itéré 10
 node scripts/generate-pin-hash.js 1234
 ```
 
-Copiez le hash généré dans `web/security-audit.js` et `web/index.html` (remplacez la valeur de `PIN_HASH`).
+Copiez le hash généré dans `web/audit-core.js` (remplacez la valeur de `PIN_HASH`).
 
 ## Fichiers couverts
 
 - Variables d'environnement (`.env`, `.env.local`, `.env.production`...)
-- Clés et credentials (`secrets.json`, `credentials.json`, clés SSH, AWS...)
+- Clés et credentials (`secrets.json`, `credentials.json`, clés SSH, AWS, OpenAI, SendGrid, Mailgun, HuggingFace, GitLab, Heroku, Azure...)
 - Configurations build (`vite.config.js`, `webpack.config.js`, `next.config.js`)
 - Bases de données (`dump.sql`, `backup.sql`, `db.json`)
 - Infra (`docker-compose.yml`, `nginx.conf`, `.htaccess`)

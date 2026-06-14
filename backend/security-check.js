@@ -180,6 +180,15 @@ const SECRET_PATTERNS = [
   { name: 'Firebase API key',       re: /AIza[0-9A-Za-z_-]{35}/                                           },
   { name: 'Slack token',            re: /xox[bpors]-[0-9A-Za-z-]{10,}/                                    },
   { name: 'Twilio key',             re: /SK[0-9a-fA-F]{32}/                                               },
+  { name: 'Clé OpenAI',             re: /sk-[a-zA-Z0-9_-]{20,}/                                            },
+  { name: 'Clé SendGrid',           re: /SG\.[a-zA-Z0-9_-]{22,}/                                           },
+  { name: 'Clé Mailgun',            re: /key-[a-zA-Z0-9]{32}/                                              },
+  { name: 'Token HuggingFace',      re: /hf_[a-zA-Z0-9]{34,}/                                             },
+  { name: 'Token GitLab',           re: /glpat-[a-zA-Z0-9_-]{20,}/                                        },
+  { name: 'Clé Heroku',             re: /heroku_[a-zA-Z0-9]{20,}/                                         },
+  { name: 'Client secret Google',   re: /[0-9a-zA-Z_-]{24}\.apps\.googleusercontent\.com/                 },
+  { name: 'Token Bearer',           re: /Bearer\s+[a-zA-Z0-9_-]{20,}/                                      },
+  { name: 'Clé Azure',              re: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/    },
 ];
 
 // ── Local file checks ─────────────────────────────────────────────────────────
@@ -419,6 +428,47 @@ function generateAIPrompt(localFound, remoteResults, remoteUrl) {
   return lines.join('\n');
 }
 
+// ── JSON export ───────────────────────────────────────────────────────────────
+
+function exportJSON(localFound, remoteResults, remoteUrl, outPath) {
+  const report = {
+    date: new Date().toISOString(),
+    directory: process.cwd(),
+    remoteUrl: remoteUrl || null,
+    summary: {
+      totalTargets: TARGETS.length,
+      localFound: localFound.length,
+      critical: localFound.filter(f => f.severity === 'CRITIQUE').length,
+      withSecrets: localFound.filter(f => f.secrets.length > 0).length,
+      needsFix: localFound.filter(f => f.needsFix).length,
+      remoteExposed: remoteResults.filter(r => r.result.kind === 'exposed').length,
+      remoteProtected: remoteResults.filter(r => r.result.kind === 'protected').length,
+    },
+    local: localFound.map(f => ({
+      path: f.path,
+      severity: f.severity,
+      description: f.desc,
+      permissions: f.perms ? {
+        octal: f.perms.octal,
+        worldRead: f.perms.worldRead,
+        worldWrite: f.perms.worldWrite,
+        size: f.perms.size,
+      } : null,
+      secrets: f.secrets,
+    })),
+    remote: remoteResults.map(({ target, result }) => ({
+      path: target.path,
+      severity: target.severity,
+      kind: result.kind,
+      status: result.status || null,
+      preview: result.preview || null,
+      note: result.note || null,
+      error: result.error || null,
+    })),
+  };
+  fs.writeFileSync(outPath, JSON.stringify(report, null, 2), 'utf8');
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -426,6 +476,7 @@ async function main() {
   const argUrl     = args.find(a => /^https?:\/\//.test(a));
   const remoteUrl  = argUrl || API_URL || null;
   const aiPrompt   = args.includes('--ai-prompt');
+  const jsonExport = args.includes('--json');
   const cwd        = process.cwd();
   let remoteResults = [];
 
@@ -564,6 +615,13 @@ async function main() {
     console.log(col(C.cyan, `  📝 Prompt IA écrit dans : ${outFile}`));
   }
 
+  if (jsonExport) {
+    const outFile = path.join(cwd, 'security-audit-report.json');
+    exportJSON(localFound, remoteResults || [], remoteUrl, outFile);
+    console.log('');
+    console.log(col(C.cyan, `  📊 Rapport JSON écrit dans : ${outFile}`));
+  }
+
   // ── 4. AUTO-CORRECTION (optional) ───────────────────────────────────────────
 
   if (args.includes('--correction')) {
@@ -598,7 +656,7 @@ async function main() {
     console.log('');
     console.log(col(C.gray, `  💡 Pour activer l'audit distant, éditer API_URL en haut du fichier :`));
     console.log(col(C.gray, `     const API_URL = 'https://api.exemple.com';`));
-    console.log(col(C.gray, `     node security-check.js [--correction] [--ai-prompt]`));
+    console.log(col(C.gray, `     node security-check.js [--correction] [--ai-prompt] [--json]`));
   }
 
   console.log('');

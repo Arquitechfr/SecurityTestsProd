@@ -107,6 +107,7 @@
     .path { color: #8b949e; }
     .path-name { color: #e6edf3; font-weight: 600; display: block; }
     .path-sub  { font-size: 0.7rem; color: #484f58; }
+    .path-desc { font-size: 0.7rem; color: #8b949e; display: block; margin-top: 2px; }
 
     .badge {
       display: inline-block;
@@ -158,6 +159,8 @@
       overflow: auto;
     }
     .note-text { color: #484f58; font-size: 0.72rem; }
+    .secrets-box { margin-top: 6px; }
+    .secret-line { color: #f85149; font-size: 0.7rem; font-weight: 600; }
 
     footer {
       margin-top: 28px;
@@ -252,10 +255,11 @@
 </p>
 
 <div class="toolbar">
-  <button id="btn-start"  onclick="startAudit()">▶ Lancer l'audit</button>
-  <button id="btn-stop"   onclick="stopAudit()"  disabled>⏹ Arrêter</button>
-  <button id="btn-export" onclick="exportReport()" disabled>⬇ Copier le rapport</button>
-  <button id="btn-prompt" onclick="exportAIPrompt()" disabled>🤖 Copier prompt IA</button>
+  <button id="btn-start">▶ Lancer l'audit</button>
+  <button id="btn-stop" disabled>⏹ Arrêter</button>
+  <button id="btn-export" disabled>⬇ Copier le rapport</button>
+  <button id="btn-json" disabled>📊 Télécharger JSON</button>
+  <button id="btn-prompt" disabled>🤖 Copier prompt IA</button>
   <span class="status-text" id="status-text">Prêt.</span>
 </div>
 
@@ -295,62 +299,6 @@
 
 </div>
 
-<script>
-(function() {
-  const PIN_HASH = 'f35eb5b500b74ab9795eb36e339cb28c91cb1bab8b2485fd92e47b9e5d3d536b'; // default PIN: 0000
-  const ITERATIONS = 100000;
-  async function sha256(input, iterations) {
-    let buf = typeof input === 'string' ? new TextEncoder().encode(input) : input;
-    for (let i = 0; i < iterations; i++) buf = await crypto.subtle.digest('SHA-256', buf);
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-  async function verifyPin() {
-    const inputs = document.querySelectorAll('.pin-digit');
-    const code = Array.from(inputs).map(i => i.value).join('');
-    if (code.length !== 4 || !/^\d{4}$/.test(code)) {
-      document.getElementById('pin-error').textContent = 'Veuillez saisir 4 chiffres.';
-      return;
-    }
-    try {
-      const hash = await sha256(code, ITERATIONS);
-      if (hash === PIN_HASH) {
-        document.getElementById('pin-overlay').style.display = 'none';
-        document.getElementById('main-content').style.display = 'block';
-        document.getElementById('lbl-date').textContent = new Date().toLocaleString('fr-FR');
-      } else {
-        document.getElementById('pin-error').textContent = 'Code incorrect.';
-        inputs.forEach(i => { i.value = ''; });
-        inputs[0].focus();
-      }
-    } catch (e) {
-      document.getElementById('pin-error').textContent = 'Erreur de vérification (contexte non sécurisé ?)';
-    }
-  }
-  window.verifyPin = verifyPin;
-  const inputs = document.querySelectorAll('.pin-digit');
-  inputs.forEach((input, idx) => {
-    input.addEventListener('input', (e) => {
-      const val = e.target.value.replace(/\D/g, '');
-      e.target.value = val;
-      if (val) {
-        input.classList.add('filled');
-        if (idx < inputs.length - 1) {
-          inputs[idx + 1].focus();
-        } else {
-          verifyPin();
-        }
-      } else {
-        input.classList.remove('filled');
-      }
-    });
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Backspace' && !input.value && idx > 0) inputs[idx - 1].focus();
-      if (e.key === 'Enter') verifyPin();
-    });
-  });
-  inputs[0]?.focus();
-})();
-</script>
-<script src="security-audit.js?v=2" onerror="console.warn('security-audit.js failed to load — audit functions unavailable')"></script>
+<script type="module" src="security-audit.js?v=3" onerror="console.warn('security-audit.js failed to load — audit functions unavailable')"></script>
 </body>
 </html>
