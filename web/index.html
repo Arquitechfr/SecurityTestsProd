@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>🔒 Security Audit</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 32px 24px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    h1 { font-size: 1.3rem; color: #f0f6fc; }
+    .subtitle { color: #8b949e; font-size: 0.8rem; margin-top: 4px; margin-bottom: 24px; }
+    .subtitle strong { color: #c9d1d9; }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 7px 16px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      transition: filter 0.15s;
+    }
+    button:hover:not(:disabled) { filter: brightness(1.15); }
+    button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    #btn-start   { background: #238636; color: #fff; border-color: #2ea043; }
+    #btn-stop    { background: #b91c1c; color: #fff; border-color: #dc2626; }
+    #btn-export  { background: #21262d; color: #c9d1d9; border-color: #30363d; }
+
+    .status-text { color: #8b949e; font-size: 0.78rem; }
+
+    .progress-wrap { margin-bottom: 16px; }
+    .progress-top  {
+      display: flex;
+      justify-content: space-between;
+      color: #8b949e;
+      font-size: 0.75rem;
+      margin-bottom: 5px;
+    }
+    .progress-bar  { background: #21262d; border-radius: 3px; height: 3px; overflow: hidden; }
+    .progress-fill { background: #1f6feb; height: 100%; width: 0; transition: width 0.25s ease; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .stat {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px 10px;
+      text-align: center;
+    }
+    .stat .n { font-size: 1.7rem; font-weight: 700; line-height: 1; }
+    .stat .l { font-size: 0.65rem; color: #8b949e; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .s-exposed   .n { color: #f85149; }
+    .s-warning   .n { color: #d29922; }
+    .s-protected .n { color: #58a6ff; }
+    .s-safe      .n { color: #3fb950; }
+
+    .tbl-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      text-align: left;
+      padding: 7px 10px;
+      border-bottom: 1px solid #30363d;
+      color: #8b949e;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    tr.row { border-bottom: 1px solid #161b22; }
+    tr.row:hover { background: #161b22; }
+    tr.row.r-exposed { background: #160808; }
+    tr.row.r-exposed:hover { background: #1c0a0a; }
+    tr.row.r-warning { background: #0e0c00; }
+    tr.row.r-warning:hover { background: #141000; }
+
+    td { padding: 7px 10px; vertical-align: top; }
+
+    .path { color: #8b949e; }
+    .path-name { color: #e6edf3; font-weight: 600; display: block; }
+    .path-sub  { font-size: 0.7rem; color: #484f58; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .b-exposed   { background: #3d0e0a; color: #f85149; }
+    .b-warning   { background: #2b1c00; color: #d29922; }
+    .b-safe      { background: #0b2115; color: #3fb950; }
+    .b-protected { background: #071833; color: #58a6ff; }
+    .b-error     { background: #1c1c1c; color: #6e7681; }
+    .b-pending   { background: #1c1c1c; color: #6e7681; }
+
+    .sev-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+    .d-critical { background: #f85149; }
+    .d-high     { background: #d29922; }
+    .d-medium   { background: #8b949e; }
+    .d-low      { background: #3fb950; }
+    .d-info     { background: #58a6ff; }
+
+    .sev-badge { background: #161b22; color: #8b949e; }
+
+    .http-code { color: #8b949e; font-size: 0.8rem; }
+    .http-code.ok  { color: #f85149; }
+    .http-code.nok { color: #3fb950; }
+
+    .preview-box {
+      background: #010409;
+      border: 1px solid #30363d;
+      border-radius: 3px;
+      padding: 4px 8px;
+      margin-top: 4px;
+      color: #d29922;
+      font-size: 0.7rem;
+      word-break: break-all;
+      white-space: pre-wrap;
+      max-height: 56px;
+      overflow: auto;
+    }
+    .note-text { color: #484f58; font-size: 0.72rem; }
+
+    footer {
+      margin-top: 28px;
+      padding-top: 14px;
+      border-top: 1px solid #21262d;
+      color: #484f58;
+      font-size: 0.72rem;
+    }
+    footer strong { color: #8b949e; }
+
+    /* ── PIN overlay ── */
+    .pin-overlay {
+      position: fixed; inset: 0;
+      background: #0d1117;
+      z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pin-box {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 32px 28px;
+      text-align: center;
+      max-width: 340px; width: 90%;
+    }
+    .pin-box h2 { color: #f0f6fc; font-size: 1.1rem; margin-bottom: 6px; }
+    .pin-box p  { color: #8b949e; font-size: 0.8rem; margin-bottom: 18px; }
+    .pin-inputs {
+      display: flex; gap: 14px; justify-content: center;
+      margin-bottom: 18px;
+    }
+    .pin-digit {
+      width: 64px; height: 72px;
+      background: #0d1117;
+      border: 2px solid #30363d;
+      border-radius: 12px;
+      color: #f0f6fc;
+      font-size: 2rem;
+      font-family: inherit;
+      font-weight: 600;
+      text-align: center;
+      caret-color: transparent;
+      transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+    }
+    .pin-digit:focus {
+      outline: none;
+      border-color: #58a6ff;
+      box-shadow: 0 0 0 4px rgba(88,166,255,0.20);
+      transform: translateY(-2px);
+    }
+    .pin-digit.filled {
+      border-color: #2ea043;
+    }
+    .pin-error {
+      color: #f85149;
+      font-size: 0.78rem;
+      margin-bottom: 14px;
+      min-height: 1.2em;
+    }
+    #btn-unlock {
+      background: #1f6feb; color: #fff; border-color: #388bfd;
+      width: 100%; padding: 10px;
+    }
+    .main-content { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- ── PIN lock ── -->
+<div id="pin-overlay" class="pin-overlay">
+  <div class="pin-box">
+    <h2>🔒 Accès sécurisé</h2>
+    <p>Saisissez le code à 4 chiffres</p>
+    <div class="pin-inputs">
+      <input type="password" maxlength="1" class="pin-digit" inputmode="numeric" autocomplete="off">
+      <input type="password" maxlength="1" class="pin-digit" inputmode="numeric" autocomplete="off">
+      <input type="password" maxlength="1" class="pin-digit" inputmode="numeric" autocomplete="off">
+      <input type="password" maxlength="1" class="pin-digit" inputmode="numeric" autocomplete="off">
+    </div>
+    <p id="pin-error" class="pin-error"></p>
+  </div>
+</div>
+
+<!-- ── Main content ── -->
+<div id="main-content" class="main-content">
+
+<h1>🔒 Security Audit — Frontend</h1>
+<p class="subtitle">
+  Vérifie si des fichiers sensibles sont accessibles depuis <strong id="lbl-origin"></strong> —
+  <span id="lbl-count"></span> fichiers à tester.
+  <br>⚠️ <strong>Supprimer ce fichier après usage.</strong>
+</p>
+
+<div class="toolbar">
+  <button id="btn-start"  onclick="startAudit()">▶ Lancer l'audit</button>
+  <button id="btn-stop"   onclick="stopAudit()"  disabled>⏹ Arrêter</button>
+  <button id="btn-export" onclick="exportReport()" disabled>⬇ Copier le rapport</button>
+  <button id="btn-prompt" onclick="exportAIPrompt()" disabled>🤖 Copier prompt IA</button>
+  <span class="status-text" id="status-text">Prêt.</span>
+</div>
+
+<div class="progress-wrap" id="progress-wrap" style="display:none">
+  <div class="progress-top">
+    <span id="progress-label">Initialisation...</span>
+    <span id="progress-pct">0%</span>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+</div>
+
+<div class="stats" id="stats" style="display:none">
+  <div class="stat s-exposed">  <div class="n" id="n-exposed">0</div>  <div class="l">🔴 Exposés</div></div>
+  <div class="stat s-warning">  <div class="n" id="n-warning">0</div>  <div class="l">🟡 Suspects</div></div>
+  <div class="stat s-protected"><div class="n" id="n-protected">0</div><div class="l">🔵 Protégés</div></div>
+  <div class="stat s-safe">     <div class="n" id="n-safe">0</div>     <div class="l">🟢 Sûrs</div></div>
+</div>
+
+<div class="tbl-wrap">
+  <table id="results-table" style="display:none">
+    <thead>
+      <tr>
+        <th>Fichier</th>
+        <th>Sévérité</th>
+        <th>Statut</th>
+        <th>HTTP</th>
+        <th>Détails</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<footer>
+  Généré le <strong id="lbl-date"></strong> · Cet outil doit rester hors git et être supprimé après usage.
+</footer>
+
+</div>
+
+<script>
+(function() {
+  const PIN_HASH = 'f35eb5b500b74ab9795eb36e339cb28c91cb1bab8b2485fd92e47b9e5d3d536b'; // default PIN: 0000
+  const ITERATIONS = 100000;
+  async function sha256(input, iterations) {
+    let buf = typeof input === 'string' ? new TextEncoder().encode(input) : input;
+    for (let i = 0; i < iterations; i++) buf = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  async function verifyPin() {
+    const inputs = document.querySelectorAll('.pin-digit');
+    const code = Array.from(inputs).map(i => i.value).join('');
+    if (code.length !== 4 || !/^\d{4}$/.test(code)) {
+      document.getElementById('pin-error').textContent = 'Veuillez saisir 4 chiffres.';
+      return;
+    }
+    try {
+      const hash = await sha256(code, ITERATIONS);
+      if (hash === PIN_HASH) {
+        document.getElementById('pin-overlay').style.display = 'none';
+        document.getElementById('main-content').style.display = 'block';
+        document.getElementById('lbl-date').textContent = new Date().toLocaleString('fr-FR');
+      } else {
+        document.getElementById('pin-error').textContent = 'Code incorrect.';
+        inputs.forEach(i => { i.value = ''; });
+        inputs[0].focus();
+      }
+    } catch (e) {
+      document.getElementById('pin-error').textContent = 'Erreur de vérification (contexte non sécurisé ?)';
+    }
+  }
+  window.verifyPin = verifyPin;
+  const inputs = document.querySelectorAll('.pin-digit');
+  inputs.forEach((input, idx) => {
+    input.addEventListener('input', (e) => {
+      const val = e.target.value.replace(/\D/g, '');
+      e.target.value = val;
+      if (val) {
+        input.classList.add('filled');
+        if (idx < inputs.length - 1) {
+          inputs[idx + 1].focus();
+        } else {
+          verifyPin();
+        }
+      } else {
+        input.classList.remove('filled');
+      }
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !input.value && idx > 0) inputs[idx - 1].focus();
+      if (e.key === 'Enter') verifyPin();
+    });
+  });
+  inputs[0]?.focus();
+})();
+</script>
+<script src="security-audit.js?v=2" onerror="console.warn('security-audit.js failed to load — audit functions unavailable')"></script>
+</body>
+</html>
