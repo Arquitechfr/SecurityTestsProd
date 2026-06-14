@@ -79,7 +79,7 @@ export const TIMEOUT_MS   = 6000;
 export const BODY_MAX     = 1024;
 export const PREVIEW_MAX  = 180;
 
-export const BRUTE_DIRS = [
+export const COMMON_DIR_CANDIDATES = [
   'admin', 'backend', 'mobile', 'landingpage', 'web', 'packages',
   'src', 'dist', 'build', 'public', 'assets', 'scripts',
   'api', 'app', 'server', 'client', 'frontend', 'docs',
@@ -108,9 +108,9 @@ export const BRUTE_FILES = [
   { path: 'error.log',              severity: 'MOYEN',    desc: "Log d'erreurs" },
 ];
 
-function generateBruteTargets() {
+export function generateBruteTargets(dirs) {
   const targets = [];
-  for (const dir of BRUTE_DIRS) {
+  for (const dir of dirs) {
     for (const file of BRUTE_FILES) {
       targets.push({ path: `${dir}/${file.path}`, severity: file.severity, desc: file.desc });
     }
@@ -118,7 +118,47 @@ function generateBruteTargets() {
   return targets;
 }
 
-const BRUTE_TARGETS = generateBruteTargets();
+export async function discoverRootDirs(signal) {
+  const found = new Set();
+
+  try {
+    const r = await fetch(`${window.location.origin}/`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal,
+      headers: { Accept: 'text/html,*/*' },
+    });
+    if (r.status === 200) {
+      const text = await r.text();
+      const regex = /<a[^>]+href=["']([^"']+\/?)["']/gi;
+      let m;
+      while ((m = regex.exec(text)) !== null) {
+        const href = m[1].replace(/^\.\//, '').replace(/\/$/, '');
+        if (href && !href.includes('/') && !href.startsWith('.') && !href.includes(':')) {
+          found.add(href);
+        }
+      }
+    }
+  } catch (_) {}
+
+  for (const dir of COMMON_DIR_CANDIDATES) {
+    if (signal?.aborted) break;
+    if (found.has(dir)) continue;
+    try {
+      const r = await fetch(`${window.location.origin}/${dir}/`, {
+        method: 'HEAD',
+        cache: 'no-store',
+        signal,
+        headers: { Accept: '*/*' },
+      });
+      if (r.status === 200 || r.status === 403) {
+        found.add(dir);
+      }
+    } catch (_) {}
+  }
+
+  return Array.from(found);
+}
 
 export const BASE_TARGETS = [
   { path: '.env',                   severity: 'CRITIQUE', desc: "Variables d'environnement" },
@@ -166,34 +206,7 @@ export const BASE_TARGETS = [
   { path: '.ssh/id_ed25519',        severity: 'CRITIQUE', desc: 'Clé privée SSH Ed25519' },
   { path: 'app.log',                severity: 'MOYEN',    desc: 'Log applicatif' },
   { path: 'error.log',              severity: 'MOYEN',    desc: "Log d'erreurs" },
-  { path: 'backend/.env',                    severity: 'CRITIQUE', desc: 'Backend env' },
-  { path: 'backend/.env.local',              severity: 'CRITIQUE', desc: 'Backend env local' },
-  { path: 'backend/.env.production',         severity: 'CRITIQUE', desc: 'Backend env production' },
-  { path: 'backend/.env.production.local',   severity: 'CRITIQUE', desc: 'Backend env prod local' },
-  { path: 'backend/.env.development',        severity: 'ÉLEVÉ',    desc: 'Backend env dev' },
-  { path: 'backend/.env.development.local',  severity: 'CRITIQUE', desc: 'Backend env dev local' },
-  { path: 'backend/ecosystem.config.cjs',    severity: 'ÉLEVÉ',    desc: 'Backend PM2 config' },
-  { path: 'backend/src/helpers/config.ts',   severity: 'MOYEN',    desc: 'Backend config helper' },
-  { path: 'backend/src/helpers/auth.ts',     severity: 'MOYEN',    desc: 'Backend auth helper' },
-  { path: 'backend/scripts/detect_duplicates.ts', severity: 'FAIBLE', desc: 'Backend script' },
-  { path: 'mobile/.env',                   severity: 'CRITIQUE', desc: 'Mobile env' },
-  { path: 'mobile/.env.local',             severity: 'CRITIQUE', desc: 'Mobile env local' },
-  { path: 'mobile/.env.production',          severity: 'CRITIQUE', desc: 'Mobile env production' },
-  { path: 'mobile/app.json',               severity: 'FAIBLE',   desc: 'Mobile Expo config' },
-  { path: 'mobile/eas.json',               severity: 'FAIBLE',   desc: 'Mobile EAS config' },
-  { path: 'landingpage/.env',              severity: 'CRITIQUE', desc: 'Landing env' },
-  { path: 'landingpage/.env.local',        severity: 'CRITIQUE', desc: 'Landing env local' },
-  { path: 'landingpage/.env.production',   severity: 'CRITIQUE', desc: 'Landing env production' },
-  { path: 'web/.env',                      severity: 'CRITIQUE', desc: 'Web env' },
-  { path: 'web/.env.local',                severity: 'CRITIQUE', desc: 'Web env local' },
-  { path: 'web/.env.production',           severity: 'CRITIQUE', desc: 'Web env production' },
-  { path: 'packages/shared-types/.env',    severity: 'CRITIQUE', desc: 'Shared env' },
-  { path: '.npmrc',                        severity: 'ÉLEVÉ',    desc: 'Config NPM (auth tokens)' },
-  { path: 'pnpm-lock.yaml',                severity: 'INFO',     desc: 'Lock pnpm' },
-  { path: 'pnpm-workspace.yaml',           severity: 'INFO',     desc: 'Workspace pnpm' },
 ];
-
-export const TARGETS = [...BASE_TARGETS, ...BRUTE_TARGETS];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

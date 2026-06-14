@@ -1,7 +1,8 @@
 ﻿'use strict';
 
 import {
-  setupPinInputs, TARGETS, TIMEOUT_MS, checkTarget, readBody, isSPAFallback,
+  setupPinInputs, BASE_TARGETS, TIMEOUT_MS, checkTarget, readBody, isSPAFallback,
+  discoverRootDirs, generateBruteTargets,
 } from './audit-core.js';
 import {
   appendRow, updateRow, updateStats, setProgress,
@@ -22,7 +23,7 @@ const counts     = { exposed: 0, warning: 0, protected: 0, safe: 0 };
 document.addEventListener('DOMContentLoaded', () => {
   setupPinInputs();
   document.getElementById('lbl-origin').textContent = window.location.origin;
-  document.getElementById('lbl-count').textContent  = TARGETS.length;
+  document.getElementById('lbl-count').textContent  = '?';
 
   document.getElementById('btn-start').addEventListener('click', startAudit);
   document.getElementById('btn-stop').addEventListener('click', stopAudit);
@@ -58,9 +59,16 @@ async function startAudit() {
   mainAbort = new AbortController();
   const mainSignal = mainAbort.signal;
 
+  setProgress(0, 1, 'Découverte des dossiers...');
+  const discoveredDirs = await discoverRootDirs(mainSignal);
+  if (mainSignal.aborted) { finishAudit(true); return; }
+
+  const bruteTargets = generateBruteTargets(discoveredDirs);
+  const allTargets = [...BASE_TARGETS, ...bruteTargets];
+
   const seen = new Set();
   const uniqueTargets = [];
-  for (const t of TARGETS) {
+  for (const t of allTargets) {
     if (!seen.has(t.path)) {
       seen.add(t.path);
       uniqueTargets.push(t);

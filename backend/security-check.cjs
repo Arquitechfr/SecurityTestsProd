@@ -33,7 +33,7 @@ const col = (color, text) => `${color}${text}${C.reset}`;
 
 // ── Targets ───────────────────────────────────────────────────────────────────
 
-const BRUTE_DIRS = [
+const COMMON_DIR_CANDIDATES = [
   'admin', 'backend', 'mobile', 'landingpage', 'web', 'packages',
   'src', 'dist', 'build', 'public', 'assets', 'scripts',
   'api', 'app', 'server', 'client', 'frontend', 'docs',
@@ -117,36 +117,11 @@ const BASE_TARGETS = [
   { path: 'app.log',                severity: 'MOYEN',    desc: 'Log applicatif' },
   { path: 'error.log',              severity: 'MOYEN',    desc: 'Log d\'erreurs' },
   { path: 'access.log',             severity: 'FAIBLE',   desc: 'Log d\'accès' },
-
-  // ── Pato specific ──
-  { path: 'backend/.env',                    severity: 'CRITIQUE', desc: 'Backend env' },
-  { path: 'backend/.env.local',              severity: 'CRITIQUE', desc: 'Backend env local' },
-  { path: 'backend/.env.production',         severity: 'CRITIQUE', desc: 'Backend env production' },
-  { path: 'backend/ecosystem.config.cjs',    severity: 'ÉLEVÉ',    desc: 'Backend PM2 config' },
-  { path: 'backend/src/helpers/config.ts',   severity: 'MOYEN',    desc: 'Backend config helper' },
-  { path: 'backend/src/helpers/auth.ts',     severity: 'MOYEN',    desc: 'Backend auth helper' },
-
-  { path: 'mobile/.env',                   severity: 'CRITIQUE', desc: 'Mobile env' },
-  { path: 'mobile/.env.local',             severity: 'CRITIQUE', desc: 'Mobile env local' },
-  { path: 'mobile/app.json',               severity: 'FAIBLE',   desc: 'Mobile Expo config' },
-  { path: 'mobile/eas.json',               severity: 'FAIBLE',   desc: 'Mobile EAS config' },
-
-  { path: 'landingpage/.env',              severity: 'CRITIQUE', desc: 'Landing env' },
-  { path: 'landingpage/.env.local',        severity: 'CRITIQUE', desc: 'Landing env local' },
-  { path: 'landingpage/.env.production',   severity: 'CRITIQUE', desc: 'Landing env production' },
-
-  { path: 'web/.env',                      severity: 'CRITIQUE', desc: 'Web env' },
-  { path: 'web/.env.local',                severity: 'CRITIQUE', desc: 'Web env local' },
-  { path: 'web/.env.production',           severity: 'CRITIQUE', desc: 'Web env production' },
-
-  { path: 'packages/shared-types/.env',    severity: 'CRITIQUE', desc: 'Shared env' },
-  { path: 'pnpm-lock.yaml',                severity: 'INFO',     desc: 'Lock pnpm' },
-  { path: 'pnpm-workspace.yaml',           severity: 'INFO',     desc: 'Workspace pnpm' },
 ];
 
-function generateBruteTargets() {
+function generateBruteTargets(dirs) {
   const targets = [];
-  for (const dir of BRUTE_DIRS) {
+  for (const dir of dirs) {
     for (const file of BRUTE_FILES) {
       targets.push({ path: `${dir}/${file.path}`, severity: file.severity, desc: file.desc });
     }
@@ -154,18 +129,65 @@ function generateBruteTargets() {
   return targets;
 }
 
-const BRUTE_TARGETS = generateBruteTargets();
-
 /** Deduplicate by path */
-function makeUniqueTargets() {
+function makeUniqueTargets(list) {
   const seen = new Map();
-  for (const t of [...BASE_TARGETS, ...BRUTE_TARGETS]) {
+  for (const t of list) {
     if (!seen.has(t.path)) seen.set(t.path, t);
   }
   return Array.from(seen.values());
 }
 
-const TARGETS = makeUniqueTargets();
+function discoverLocalDirs() {
+  const found = new Set();
+  try {
+    const entries = fs.readdirSync(process.cwd(), { withFileTypes: true });
+    for (const e of entries) {
+      if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules') {
+        found.add(e.name);
+      }
+    }
+  } catch (_) {}
+  for (const dir of COMMON_DIR_CANDIDATES) {
+    if (found.has(dir)) continue;
+    try {
+      const stat = fs.statSync(path.join(process.cwd(), dir));
+      if (stat.isDirectory()) found.add(dir);
+    } catch (_) {}
+  }
+  return Array.from(found);
+}
+
+async function discoverRootDirs(baseUrl) {
+  const found = new Set();
+  if (!baseUrl) return Array.from(found);
+
+  try {
+    const result = await httpGet(baseUrl.replace(/\/$/, '') + '/');
+    if (result.status === 200 && result.body) {
+      const regex = /<a[^>]+href=["']([^"']+\/?)["']/gi;
+      let m;
+      while ((m = regex.exec(result.body)) !== null) {
+        const href = m[1].replace(/^\.\//, '').replace(/\/$/, '');
+        if (href && !href.includes('/') && !href.startsWith('.') && !href.includes(':')) {
+          found.add(href);
+        }
+      }
+    }
+  } catch (_) {}
+
+  for (const dir of COMMON_DIR_CANDIDATES) {
+    if (found.has(dir)) continue;
+    try {
+      const result = await httpGet(`${baseUrl.replace(/\/$/, '')}/${dir}/`);
+      if (result.status === 200 || result.status === 403) {
+        found.add(dir);
+      }
+    } catch (_) {}
+  }
+
+  return Array.from(found);
+}
 
 // ── Secret detection patterns ────────────────────────────────────────────────
 
@@ -444,13 +466,13 @@ function generateAIPrompt(localFound, remoteResults, remoteUrl) {
 
 // ── JSON export ───────────────────────────────────────────────────────────────
 
-function exportJSON(localFound, remoteResults, remoteUrl, outPath) {
+function exportJSON(localFound, remoteResults, remoteUrl, outPath, totalTargets) {
   const report = {
     date: new Date().toISOString(),
     directory: process.cwd(),
     remoteUrl: remoteUrl || null,
     summary: {
-      totalTargets: TARGETS.length,
+      totalTargets: totalTargets || 0,
       localFound: localFound.length,
       critical: localFound.filter(f => f.severity === 'CRITIQUE').length,
       withSecrets: localFound.filter(f => f.secrets.length > 0).length,
@@ -493,6 +515,8 @@ async function main() {
   const jsonExport = args.includes('--json');
   const cwd        = process.cwd();
   let remoteResults = [];
+  const localDirs = discoverLocalDirs();
+  const localTargets = makeUniqueTargets([...BASE_TARGETS, ...generateBruteTargets(localDirs)]);
 
   // Header
   console.log('');
@@ -502,19 +526,19 @@ async function main() {
   console.log(col(C.gray, `  Répertoire : ${cwd}`));
   if (remoteUrl) console.log(col(C.gray, `  URL distante: ${remoteUrl}`));
   console.log(col(C.gray, `  Date       : ${new Date().toLocaleString('fr-FR')}`));
-  console.log(col(C.gray, `  Fichiers   : ${TARGETS.length} à vérifier`));
+  console.log(col(C.gray, `  Fichiers   : ${localTargets.length} à vérifier`));
 
   // ── 1. LOCAL SCAN ───────────────────────────────────────────────────────────
 
   printSection('AUDIT LOCAL — Présence de fichiers sensibles');
 
   const localFound = [];
-  for (const target of TARGETS) {
+  for (const target of localTargets) {
     const found = checkLocalFile(target);
     if (found) localFound.push(found);
   }
 
-  const absent = TARGETS.length - localFound.length;
+  const absent = localTargets.length - localFound.length;
 
   if (localFound.length === 0) {
     console.log(col(C.green, '  ✅  Aucun fichier sensible trouvé dans ce répertoire.'));
@@ -543,11 +567,14 @@ async function main() {
       : col(C.green,  'Mode standard'));
     console.log('');
 
+    const remoteDirs = await discoverRootDirs(remoteUrl);
+    const remoteTargets = makeUniqueTargets([...BASE_TARGETS, ...generateBruteTargets(remoteDirs)]);
+
     let remoteExposed = 0;
     let remoteProtected = 0;
     let remoteErrors = 0;
 
-    for (const target of TARGETS) {
+    for (const target of remoteTargets) {
       const p = target.path.padEnd(36);
       process.stdout.write(`  ${col(C.gray, '→')} ${p} `);
 
@@ -595,7 +622,7 @@ async function main() {
   const withSecrets = localFound.filter(f => f.secrets.length > 0);
 
   const needsFixCount = localFound.filter(f => f.needsFix).length;
-  console.log(`  Fichiers testés       : ${TARGETS.length}`);
+  console.log(`  Fichiers testés       : ${localTargets.length}`);
   console.log(`  Présents localement   : ${col(localFound.length > 0 ? C.yellow : C.green, String(localFound.length))}`);
   console.log(`  Critiques             : ${col(criticals.length   > 0 ? C.red    : C.green, String(criticals.length))}`);
   console.log(`  Secrets détectés dans : ${col(withSecrets.length > 0 ? C.red    : C.green, String(withSecrets.length))} fichier(s)`);
@@ -631,7 +658,7 @@ async function main() {
 
   if (jsonExport) {
     const outFile = path.join(cwd, 'security-audit-report.json');
-    exportJSON(localFound, remoteResults || [], remoteUrl, outFile);
+    exportJSON(localFound, remoteResults || [], remoteUrl, outFile, localTargets.length);
     console.log('');
     console.log(col(C.cyan, `  📊 Rapport JSON écrit dans : ${outFile}`));
   }
