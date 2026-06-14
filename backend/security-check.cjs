@@ -4,10 +4,10 @@
 //         (définir API_URL ci-dessous pour l'audit distant)
 'use strict';
 
-import fs   from 'fs';
-import path from 'path';
-import http  from 'http';
-import https from 'https';
+const fs   = require('fs');
+const path = require('path');
+const http  = require('http');
+const https = require('https');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
